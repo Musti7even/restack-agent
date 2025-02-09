@@ -1,23 +1,30 @@
 import { FunctionFailure, log } from "@restackio/ai/function";
-import {
-  ChatCompletionCreateParamsNonStreaming,
-  ChatCompletionSystemMessageParam,
-  ChatCompletionUserMessageParam,
-  ChatCompletionAssistantMessageParam,
-  ChatCompletionMessage,
-} from "openai/resources/chat/completions";
+import OpenAI from "openai";
 
 import { openaiClient } from "../utils/client";
 
-export type Message =
-  | ChatCompletionSystemMessageParam
-  | ChatCompletionUserMessageParam
-  | ChatCompletionAssistantMessageParam
-  | {
-      role: "tool";
-      content: string;
-      tool_call_id?: string;
-    };
+type BaseMessage = {
+  content: string;
+};
+
+type SystemMessage = BaseMessage & {
+  role: "system";
+};
+
+type UserMessage = BaseMessage & {
+  role: "user";
+};
+
+type AssistantMessage = BaseMessage & {
+  role: "assistant";
+};
+
+type ToolMessage = BaseMessage & {
+  role: "tool";
+  tool_call_id: string;
+};
+
+export type Message = SystemMessage | UserMessage | AssistantMessage | ToolMessage;
 
 export type OpenAIChatInput = {
   systemContent?: string;
@@ -34,20 +41,37 @@ export const llmChat = async ({
   messages,
   temperature = 0.2,
   maxTokens = 300,
-}: OpenAIChatInput): Promise<ChatCompletionMessage> => {
+  tools,
+}: OpenAIChatInput): Promise<OpenAI.Chat.ChatCompletionMessage> => {
   try {
     const openai = openaiClient({});
 
-    const chatParams: ChatCompletionCreateParamsNonStreaming = {
+    const mappedMessages = messages.map((msg) => {
+      if (msg.role === "tool") {
+        return {
+          role: msg.role,
+          content: msg.content,
+          tool_call_id: msg.tool_call_id,
+        } as const;
+      }
+      return {
+        role: msg.role,
+        content: msg.content,
+      } as const;
+    });
+
+    const chatParams: OpenAI.Chat.CompletionCreateParams = {
       messages: [
         ...(systemContent
           ? [{ role: "system" as const, content: systemContent }]
           : []),
-        ...(messages ?? []),
+        ...mappedMessages,
       ],
       model,
       temperature,
       max_tokens: maxTokens,
+      ...(tools && { tools }),
+      stream: false,
     };
 
     log.debug("OpenAI chat completion params", {
@@ -55,10 +79,7 @@ export const llmChat = async ({
     });
 
     const completion = await openai.chat.completions.create(chatParams);
-
-    const message = completion.choices[0].message;
-
-    return message;
+    return completion.choices[0].message;
   } catch (error) {
     throw FunctionFailure.nonRetryable(`Error OpenAI chat: ${error}`);
   }
