@@ -13,6 +13,11 @@ export type Message =
   | ChatCompletionSystemMessageParam
   | ChatCompletionUserMessageParam
   | ChatCompletionAssistantMessageParam
+  | {
+      role: "tool";
+      content: string;
+      tool_call_id?: string;
+    };
 
 export type OpenAIChatInput = {
   systemContent?: string;
@@ -20,6 +25,7 @@ export type OpenAIChatInput = {
   messages: Message[];
   temperature?: number;
   maxTokens?: number;
+  tools?: any[];
 };
 
 export const llmChat = async ({

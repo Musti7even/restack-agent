@@ -1,5 +1,6 @@
 import { log, sleep, step } from "@restackio/ai/workflow";
 import * as functions from "../functions";
+import { Message } from "../functions/llmChat";
 
 type Input = {
   todoTitle: string;
