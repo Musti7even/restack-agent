@@ -6,6 +6,7 @@ export type Message = {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
   tool_call_id?: string;
+  tool_calls?: OpenAI.Chat.ChatCompletionMessage["tool_calls"];
 };
 
 export type OpenAIChatInput = {
@@ -28,15 +29,41 @@ export const llmChat = async ({
   try {
     const openai = openaiClient({});
 
-    const chatParams: OpenAI.Chat.CompletionCreateParams = {
-      messages: [
-        ...(systemContent ? [{ role: "system", content: systemContent }] : []),
-        ...messages.map(({ role, content, tool_call_id }) => ({
-          role,
-          content,
-          ...(tool_call_id && { tool_call_id }),
-        })),
-      ],
+    const mappedMessages = messages.map((msg): OpenAI.Chat.ChatCompletionMessageParam => {
+      if (msg.role === "tool" && msg.tool_call_id) {
+        return {
+          role: "tool",
+          content: msg.content,
+          tool_call_id: msg.tool_call_id,
+        } as const;
+      }
+      if (msg.role === "assistant") {
+        return {
+          role: "assistant",
+          content: msg.content,
+        } as const;
+      }
+      if (msg.role === "system") {
+        return {
+          role: "system",
+          content: msg.content,
+        } as const;
+      }
+      return {
+        role: "user",
+        content: msg.content,
+      } as const;
+    });
+
+    if (systemContent) {
+      mappedMessages.unshift({
+        role: "system",
+        content: systemContent,
+      });
+    }
+
+    const chatParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
+      messages: mappedMessages,
       model,
       temperature,
       max_tokens: maxTokens,
@@ -44,7 +71,7 @@ export const llmChat = async ({
       stream: false,
     };
 
-    const completion = await openai.chat.completions.create(chatParams) as OpenAI.Chat.ChatCompletion;
+    const completion = await openai.chat.completions.create(chatParams);
     const responseMessage = completion.choices[0].message;
 
     return {
